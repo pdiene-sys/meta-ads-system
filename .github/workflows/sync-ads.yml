@@ -56,6 +56,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Seed empty campaign/adset config if absent
+        run: |
+          mkdir -p data
+          [ -f data/campaign_ids.json ] || echo '{}' > data/campaign_ids.json
+          [ -f data/adset_ids.json ]    || echo '{}' > data/adset_ids.json
+
       - name: 1. Process queued actions
         continue-on-error: true
         run: python -m scripts.process_actions
