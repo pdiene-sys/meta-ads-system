@@ -1,0 +1,77 @@
+name: Hourly Meta Ads Pipeline
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview without executing actions"
+        type: boolean
+        default: false
+
+concurrency:
+  group: hourly-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      META_APP_ID: ${{ secrets.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+      META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_URL_BACKOFFICE: ${{ secrets.SUPABASE_URL_BACKOFFICE }}
+      SUPABASE_SERVICE_KEY_BACKOFFICE: ${{ secrets.SUPABASE_SERVICE_KEY_BACKOFFICE }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FAL_KEY: ${{ secrets.FAL_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      TARGET_CPA: ${{ vars.TARGET_CPA || '50.0' }}
+      TARGET_CPL: ${{ vars.TARGET_CPL || '5.0' }}
+      TARGET_ROAS: ${{ vars.TARGET_ROAS || '4.0' }}
+      MONTHLY_BUDGET: ${{ vars.MONTHLY_BUDGET || '2000' }}
+      CURRENCY: ${{ vars.CURRENCY || 'EUR' }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 1. Process queued actions
+        continue-on-error: true
+        run: python -m scripts.process_actions
+
+      - name: 2. Sync Meta data to Supabase
+        continue-on-error: true
+        run: python -m scripts.sync_to_supabase
+
+      - name: 3. Funnel tracker (registrations / purchases)
+        continue-on-error: true
+        run: python -m scripts.funnel_tracker
+
+      - name: 4. Auto rules (kill losers, detect winners, budget guardian)
+        continue-on-error: true
+        run: python -m scripts.auto_rules
+
+      - name: 5. Process new actions emitted by auto rules
+        continue-on-error: true
+        run: python -m scripts.process_actions
